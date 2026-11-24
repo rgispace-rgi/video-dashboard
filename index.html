@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0f1115">
+<title>Video · Timeline Factory</title>
+<style>
+:root{--bg:#0f1115;--card:#181b22;--line:#2a2f3a;--tx:#eef0f4;--mut:#9aa3b2;--acc:#e0b354;--ok:#4cc38a;--ko:#e5604d}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:17px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-text-size-adjust:100%}
+main{max-width:720px;margin:0 auto;padding:20px 16px calc(32px + env(safe-area-inset-bottom))}
+h1{font-size:24px;margin:0 0 4px;font-family:Georgia,serif}
+.sub{color:var(--mut);font-size:14px;margin-bottom:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px}
+label{display:block;font-size:14px;color:var(--mut);margin:12px 0 6px}
+input{width:100%;padding:14px;border-radius:12px;border:1px solid var(--line);background:#0f1115;color:var(--tx);font-size:17px}
+button,.btn{display:block;width:100%;padding:15px;border:0;border-radius:12px;background:var(--acc);color:#1b1505;font-size:17px;font-weight:700;text-align:center;text-decoration:none;cursor:pointer;margin-top:14px}
+button.sec{background:transparent;color:var(--mut);border:1px solid var(--line);font-weight:500}
+.btn.off{background:#2a2f3a;color:var(--mut);pointer-events:none}
+.msg{color:var(--ko);min-height:22px;margin-top:10px;font-size:15px}
+.stato{display:flex;align-items:center;gap:10px;font-size:16px}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--mut);flex:none}
+.dot.ok{background:var(--ok)}.dot.ko{background:var(--ko)}
+.item{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-top:1px solid var(--line)}
+.item:first-child{border-top:0;padding-top:0}
+.item img{width:84px;border-radius:10px;flex:none;background:#000;aspect-ratio:9/16;object-fit:cover}
+.item img.largo{aspect-ratio:16/9;width:120px}
+.item b{display:block;font-size:17px}
+.item .mut{color:var(--mut);font-size:14px}
+.item button{margin-top:8px;padding:10px;font-size:15px;width:auto;min-width:130px}
+video{width:100%;max-height:78vh;border-radius:12px;background:#000;margin-top:10px}
+.mut{color:var(--mut)}.small{font-size:13px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <h1>Video · Timeline Factory</h1>
+  <div class="sub">Video «linea del tempo» verticali</div>
+
+  <form id="login" class="card" hidden autocomplete="on">
+    <label for="u">Utente</label>
+    <input id="u" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+    <label for="p">Password</label>
+    <input id="p" name="password" type="password" autocomplete="current-password" required>
+    <button type="submit" id="entra">Entra</button>
+    <div id="m" class="msg" role="alert"></div>
+    <div class="mut small">Il contenuto è cifrato e si apre solo su questo dispositivo. L'accesso viene ricordato finché non premi «Esci».</div>
+  </form>
+
+  <div id="app" hidden>
+    <div class="card">
+      <div class="stato"><span id="dot" class="dot"></span><span id="st">Controllo del PC…</span></div>
+      <a id="apri" class="btn off" href="#">Apri la dashboard</a>
+      <div id="nota" class="mut small" style="margin-top:10px"></div>
+      <button class="sec" id="riprova" type="button" hidden>Riprova adesso</button>
+      <div id="diag" class="mut small" style="margin-top:10px;word-break:break-all"></div>
+    </div>
+    <div class="card">
+      <b>Video pronti</b>
+      <div id="lista" style="margin-top:12px"></div>
+      <div id="player"></div>
+    </div>
+    <div class="mut small" id="agg"></div>
+    <button class="sec" id="esci" type="button">Esci</button>
+  </div>
+</main>
+<script>
+(function(){
+var SALT='Rp3WVZ5gh6d2BRLsBYBz3g==', KN='remoto-video', ITER=600000;
+var $=function(i){return document.getElementById(i)};
+var b64=function(s){var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a};
+var toB64=function(a){var s='';a=new Uint8Array(a);for(var i=0;i<a.length;i++)s+=String.fromCharCode(a[i]);return btoa(s)};
+var key=null,vkey=null,fid=null,data=null;
+function derive(u,p){
+  var enc=new TextEncoder();
+  return crypto.subtle.importKey('raw',enc.encode(u.trim().toLowerCase()+'\n'+p),'PBKDF2',false,['deriveBits'])
+    .then(function(k){return crypto.subtle.deriveBits({name:'PBKDF2',salt:b64(SALT),iterations:ITER,hash:'SHA-256'},k,256)});
+}
+function importKey(raw){return crypto.subtle.importKey('raw',raw,'AES-GCM',false,['decrypt'])}
+function dec(buf,k){buf=new Uint8Array(buf);return crypto.subtle.decrypt({name:'AES-GCM',iv:buf.slice(0,12)},k||key,buf.slice(12))}
+function fileOf(u){return crypto.subtle.digest('SHA-256',new TextEncoder().encode(SALT+u.trim().toLowerCase())).then(function(h){
+  var a=new Uint8Array(h),s='';for(var i=0;i<10;i++)s+=('0'+a[i].toString(16)).slice(-2);return 'd/'+s+'.bin'})}
+function carica(){
+  return fetch(fid+'?t='+Date.now(),{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error('rete');return r.arrayBuffer()})
+    .then(function(b){return dec(b)}).then(function(b){data=JSON.parse(new TextDecoder().decode(b));return importKey(b64(data.k))}).then(function(k){vkey=k});
+}
+function ricorda(raw){try{localStorage.setItem(KN,JSON.stringify({k:toB64(raw),f:fid}))}catch(e){}}
+function dimentica(){try{localStorage.removeItem(KN)}catch(e){}}
+function mostraLogin(t){$('app').hidden=true;$('login').hidden=false;$('m').textContent=t||''}
+function ping(secondo){
+  if(!data||!data.url){fuori();return}
+  var c=new AbortController(),t=setTimeout(function(){c.abort()},12000);
+  fetch(data.url+'/__ping?t='+Date.now(),{signal:c.signal,cache:'no-store'}).then(function(r){clearTimeout(t);if(!r.ok)throw 0;
+    $('riprova').hidden=true;$('diag').textContent='';
+    $('dot').className='dot ok';$('st').textContent='PC acceso e raggiungibile';
+    var a=$('apri');a.className='btn';a.href=data.url+'/__entra#'+data.token;
+    $('nota').textContent='Dalla dashboard puoi creare nuovi video e seguirne l\'avanzamento.';
+  }).catch(function(e){clearTimeout(t);if(!secondo){setTimeout(function(){ping(true)},2500)}else fuori(e&&e.name==='AbortError'?'nessuna risposta in 12 secondi':'collegamento rifiutato o bloccato dalla rete o dal browser')});
+}
+function fuori(motivo){
+  $('dot').className='dot ko';$('st').textContent='PC spento o non raggiungibile';
+  $('apri').className='btn off';
+  $('nota').textContent='Per creare nuovi video il PC deve essere acceso con «avvia-remoto.bat» in esecuzione. Se è acceso, attendi un minuto: il collegamento cambia a ogni riavvio e questa pagina lo ricontrolla da sola. I video qui sotto si vedono comunque.';
+  $('riprova').hidden=false;
+  var h='';try{h=new URL(data.url).host}catch(e){}
+  $('diag').textContent=h?('Collegamento provato: '+h+' — esito: '+(motivo||'non disponibile')+' ('+new Date().toLocaleTimeString('it-IT')+')'):'Nessun collegamento pubblicato dal PC.';
+}
+// Rilegge i dati pubblicati (indirizzo del momento) e ricontrolla il PC, senza disturbare un video in riproduzione.
+function aggiorna(){
+  if(!key)return;
+  var prima=data?data.updated:'';
+  carica().then(function(){if(data.updated!==prima&&!document.querySelector('#player video'))disegna();else ping()}).catch(function(){ping()});
+}
+function guarda(it,btn){
+  btn.disabled=true;btn.textContent='Scarico…';
+  fetch(it.file+'?v='+encodeURIComponent(it.ver||'')).then(function(r){if(!r.ok)throw 0;return r.arrayBuffer()}).then(function(b){return dec(b,vkey)}).then(function(b){
+    var u=URL.createObjectURL(new Blob([b],{type:'video/mp4'}));
+    $('player').innerHTML='';var v=document.createElement('video');v.controls=true;v.playsInline=true;v.src=u;$('player').appendChild(v);
+    v.scrollIntoView({behavior:'smooth',block:'center'});v.play().catch(function(){});
+    btn.disabled=false;btn.textContent='Guarda';
+  }).catch(function(){btn.disabled=false;btn.textContent='Riprova'});
+}
+function disegna(){
+  $('login').hidden=true;$('app').hidden=false;
+  var L=$('lista');L.innerHTML='';
+  if(!data.items.length){L.innerHTML='<div class="mut">Ancora nessun video pronto.</div>'}
+  data.items.forEach(function(it){
+    var d=document.createElement('div');d.className='item';
+    var im=document.createElement('img');if(it.cover)im.src=it.cover;if(it.wide)im.className='largo';im.alt='';
+    var x=document.createElement('div');var b=document.createElement('b');b.textContent=it.title;
+    var m=document.createElement('div');m.className='mut';m.textContent=it.info;
+    x.appendChild(b);x.appendChild(m);
+    if(it.file){var bt=document.createElement('button');bt.type='button';bt.textContent='Guarda';bt.onclick=function(){guarda(it,bt)};x.appendChild(bt)}
+    d.appendChild(im);d.appendChild(x);L.appendChild(d);
+  });
+  $('agg').textContent='Aggiornato: '+new Date(data.updated).toLocaleString('it-IT');
+  ping();
+}
+function avvia(raw,daLogin){
+  return importKey(raw).then(function(k){key=k;return carica()}).then(function(){if(daLogin)ricorda(raw);disegna()});
+}
+$('login').addEventListener('submit',function(e){
+  e.preventDefault();$('m').textContent='';$('entra').disabled=true;$('entra').textContent='Verifico…';
+  fileOf($('u').value).then(function(f){fid=f;return derive($('u').value,$('p').value)}).then(function(raw){return avvia(raw,true)})
+    .catch(function(){$('m').textContent='Utente o password non corretti.'})
+    .then(function(){$('entra').disabled=false;$('entra').textContent='Entra'});
+});
+$('esci').onclick=function(){dimentica();key=null;vkey=null;fid=null;data=null;$('p').value='';$('player').innerHTML='';mostraLogin('')};
+document.addEventListener('visibilitychange',function(){if(!document.hidden)aggiorna()});
+$('riprova').onclick=function(){$('st').textContent='Controllo del PC…';$('dot').className='dot';aggiorna()};
+setInterval(function(){if(!document.hidden)aggiorna()},30000);
+var saved=null;try{saved=JSON.parse(localStorage.getItem(KN))}catch(e){}
+if(saved&&(!saved.k||!saved.f))saved=null;
+if(!window.crypto||!crypto.subtle){mostraLogin('Questo browser non supporta la cifratura necessaria.')}
+else if(saved){fid=saved.f;avvia(b64(saved.k).buffer,false).catch(function(){dimentica();mostraLogin('')})}
+else mostraLogin('');
+})();
+</script>
+</body>
+</html>
